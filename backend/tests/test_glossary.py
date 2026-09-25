@@ -163,20 +163,7 @@ def test_empty_glossary_is_not_passed_to_transcriber():
 
 
 # ── Gateway API ───────────────────────────────────────────────────────────────
-
-
-@pytest.fixture
-def gateway_with_fake_redis(fake_server):
-    """Yields the FastAPI app with _redis patched to a FakeAsyncRedis."""
-    import fakeredis
-    from backend.gateway import main as gw
-
-    fake_r = fakeredis.FakeAsyncRedis(server=fake_server, decode_responses=True)
-    original = gw._redis
-    gw._redis = fake_r
-    yield gw.app
-    # Restore — don't leave the module-level global patched between tests.
-    gw._redis = original
+# (gateway_with_fake_redis fixture is defined in conftest.py)
 
 
 async def test_put_glossary_returns_terms(gateway_with_fake_redis):

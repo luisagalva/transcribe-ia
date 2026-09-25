@@ -10,9 +10,12 @@ import redis.asyncio as aioredis
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
+from fastapi.responses import Response
+
 from backend.shared.config import settings
-from backend.shared.models import Glossary
+from backend.shared.models import Glossary, TranscriptEvent
 from backend.gateway.redis_sub import RedisSubscriber
+from backend.gateway.transcript_export import build_segments, to_srt, to_vtt
 from backend.gateway.ws_manager import ConnectionManager
 
 logging.basicConfig(
@@ -92,6 +95,61 @@ async def delete_glossary(stage_id: int) -> dict:
         await _redis.delete(_glossary_key(stage_id))
     logger.info("Glossary cleared for stage %d", stage_id)
     return {"stage_id": stage_id, "terms": [], "count": 0}
+
+
+# ── Transcript export ─────────────────────────────────────────────────────────
+
+
+async def _load_all_history(stage_id: int) -> list[TranscriptEvent]:
+    """
+    Fetch every final transcript event stored for a stage, oldest first.
+
+    Redis history is written with lpush (newest at index 0), so lrange 0 -1
+    returns items newest-first; reversing restores chronological order.
+    Malformed JSON items are silently dropped.
+    """
+    if _redis is None:
+        return []
+    raw_items = await _redis.lrange(f"stage:{stage_id}:history", 0, -1)
+    events: list[TranscriptEvent] = []
+    for raw in reversed(raw_items):
+        try:
+            events.append(TranscriptEvent.model_validate_json(raw))
+        except Exception:
+            pass
+    return events
+
+
+@app.get("/stages/{stage_id}/transcript.vtt")
+async def export_vtt(stage_id: int) -> Response:
+    """Export the stage transcript as a WebVTT subtitle file."""
+    events = await _load_all_history(stage_id)
+    segments = build_segments(events)
+    content = to_vtt(segments)
+    return Response(
+        content=content,
+        media_type="text/vtt; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="stage{stage_id}.vtt"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@app.get("/stages/{stage_id}/transcript.srt")
+async def export_srt(stage_id: int) -> Response:
+    """Export the stage transcript as an SRT subtitle file."""
+    events = await _load_all_history(stage_id)
+    segments = build_segments(events)
+    content = to_srt(segments)
+    return Response(
+        content=content,
+        media_type="text/plain; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="stage{stage_id}.srt"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @app.websocket("/ws")
