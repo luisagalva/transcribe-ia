@@ -108,13 +108,63 @@ Opens at <http://localhost:5173>
 
 ## OBS Browser Source setup
 
-1. In OBS, add a **Browser Source**.
-2. URL: `http://localhost:5173/obs?stage=1&lang=es`
-3. Width: `1920`, Height: `1080`
-4. Enable **"Shutdown source when not visible"** (optional)
-5. Check **"Refresh browser when scene becomes active"** (optional)
+### Adding the source
 
-The page renders white text with a black outline on a **transparent background**. No custom CSS needed in OBS.
+1. Open OBS → **Sources panel** → click **+** → choose **Browser**.
+2. Give it a name, e.g. `transcribe-ia stage 1`.
+3. Fill in the settings exactly as follows:
+
+| Setting | Value |
+|---------|-------|
+| **URL** | `http://localhost:5173/obs?stage=1&lang=es` |
+| **Width** | `1920` |
+| **Height** | `1080` |
+| **Frame rate** | `30` (24 is fine too — the page has no motion other than text) |
+| **Use custom frame rate** | ✅ checked |
+| **Shutdown source when not visible** | ✅ recommended (saves CPU) |
+| **Refresh browser when scene becomes active** | ✅ recommended |
+| **Custom CSS** | *(leave blank — not needed)* |
+
+4. Click **OK**.
+5. The source will show transparent except for the subtitle text at the bottom of the frame.
+
+> **The page handles its own transparent background** — you do not need to tick "Allow transparency" because the `<html>` and `<body>` backgrounds are set to `transparent` by the page itself.
+
+### Customising per stage / language
+
+Change the query parameters in the URL:
+
+| Parameter | Default | Example |
+|-----------|---------|---------|
+| `stage`   | `1`     | `?stage=2` — connects to the stage 2 worker |
+| `lang`    | `es`    | `&lang=en` — sent to the gateway for filtering |
+
+Example for stage 2, English:
+```
+http://localhost:5173/obs?stage=2&lang=en
+```
+
+Duplicate the Browser Source in OBS to show multiple stages simultaneously in the same scene.
+
+### What the page does automatically
+
+- **Reconnects** on WebSocket disconnect with exponential back-off (1 s → 10 s max).
+- **Loads history** — the last 30 final lines from Redis are fetched on connect, so the overlay is not blank after a brief disconnect.
+- **Shows 2 final lines + 1 partial** — older lines scroll off automatically.
+- **No cursor, no UI chrome** — the page renders only subtitle text.
+
+### Positioning tips
+
+- The text sits **40 px from the bottom**, centered, with a maximum width of the full frame minus 96 px of horizontal padding.
+- To move the text up (e.g. above a lower-third graphic), add `Custom CSS` in OBS:
+  ```css
+  .obs-overlay { bottom: 160px; }
+  ```
+- To increase font size:
+  ```css
+  .obs-line { font-size: 48px; }
+  ```
+- To show only 1 line instead of 2, reduce `VISIBLE_FINALS` in `frontend/src/pages/OBS.tsx` and rebuild.
 
 ## Testing without a real audio file
 

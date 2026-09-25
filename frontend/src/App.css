@@ -162,6 +162,12 @@ body.obs-mode {
 .transcript-area::-webkit-scrollbar-thumb  { background: var(--border); border-radius: 3px; }
 
 /* ── OBS Overlay ─────────────────────────────────────── */
+
+/*
+ * Outer container: pinned to the bottom, full width, pointer-events off
+ * so it never blocks clicks on the video scene below.
+ * GPU layer hint: transform + will-change prevent layout thrash on updates.
+ */
 .obs-overlay {
   position: fixed;
   bottom: 40px;
@@ -169,18 +175,37 @@ body.obs-mode {
   right: 0;
   padding: 0 48px;
   pointer-events: none;
+  /* Force a composited GPU layer for flicker-free updates */
+  transform: translateZ(0);
+  will-change: contents;
+  contain: layout style;
 }
 
-.obs-text {
+/*
+ * Inner wrapper: column of lines aligned to the bottom so new lines
+ * push older ones upward naturally.
+ */
+.obs-subtitle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Shared typography for every subtitle line */
+.obs-line {
   margin: 0;
+  padding: 0 8px;
   color: #ffffff;
   font-size: 36px;
   font-weight: 700;
-  line-height: 1.4;
+  line-height: 1.35;
   text-align: center;
   word-break: break-word;
+  max-width: 100%;
 
-  /* Black outline via multiple text-shadows */
+  /* Black outline — 8-directional shadow beats -webkit-text-stroke
+     because it keeps sub-pixel anti-aliasing intact */
   text-shadow:
     -2px -2px 0 #000,
      2px -2px 0 #000,
@@ -190,5 +215,34 @@ body.obs-mode {
      3px  0   0 #000,
      0   -3px 0 #000,
      0    3px 0 #000,
-     0    4px 8px rgba(0, 0, 0, .7);
+     0    4px 10px rgba(0, 0, 0, .65);
+}
+
+/*
+ * Finalised lines: fade + slide in from below.
+ * Animation is short (120 ms) to feel responsive but not jarring.
+ * The key={sequence} in OBS.tsx ensures this triggers exactly once per line.
+ */
+.obs-line--final {
+  animation: obs-appear 0.12s ease-out both;
+  will-change: opacity, transform;
+}
+
+/*
+ * Partial / in-progress line: slightly dimmer and no animation so that
+ * rapid partial-word updates don't cause visual noise.
+ */
+.obs-line--partial {
+  opacity: 0.78;
+}
+
+@keyframes obs-appear {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
