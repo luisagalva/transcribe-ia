@@ -99,7 +99,6 @@ Thumbs.db
 !.vscode/extensions.json
 !.vscode/settings.json
 
-*.mp3
 *.mp4
 *.wav
 *.m4a
