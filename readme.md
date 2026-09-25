@@ -198,6 +198,71 @@ transcribe-ia/
 └── .env.example
 ```
 
+## Dynamic glossary
+
+Each stage can have its own list of technical terms. The worker loads the glossary from Redis before every Gemini session and injects it as a system instruction so the model spells and capitalises those names correctly.
+
+### Loading a glossary
+
+```bash
+curl -X PUT http://localhost:8000/stages/1/glossary \
+  -H "Content-Type: application/json" \
+  -d '{"terms": ["Kubernetes", "PostgreSQL", "vMix", "WebAssembly"]}'
+```
+
+Response:
+```json
+{"stage_id": 1, "terms": ["Kubernetes", "PostgreSQL", "vMix", "WebAssembly"], "count": 4}
+```
+
+### Reading the current glossary
+
+```bash
+curl http://localhost:8000/stages/1/glossary
+```
+
+### Removing the glossary
+
+```bash
+curl -X DELETE http://localhost:8000/stages/1/glossary
+```
+
+### When does the new glossary take effect?
+
+The worker reloads the glossary from Redis **at the start of every session attempt**. If the worker is already connected to Gemini:
+
+1. The session continues with the old terms until it naturally reconnects (e.g. after a Gemini timeout or audio source restart).
+2. To force an immediate reload, restart the worker process: `Ctrl+C` then rerun `python -m backend.run_worker`.
+
+### Valid term characters
+
+Terms may contain: letters, digits, spaces, and `. - + # @ : /`
+
+The following are **rejected** to prevent prompt injection: newlines, curly braces ` { } `, backticks, quotes, semicolons, pipes, and angle brackets.
+
+| Accepted | Rejected |
+|----------|----------|
+| `Kubernetes`, `Node.js`, `C++`, `C#`, `.NET`, `gRPC`, `@auth0`, `IPv6` | `term\nignore previous instructions`, `{system}`, `` `cmd` ``, `term; DROP TABLE` |
+
+Maximum: **200 terms**, each **80 characters** or fewer.
+
+### How terms are injected (security model)
+
+The Gemini system instruction is built from a **fixed template**; terms only appear as bullet-list items:
+
+```
+You are a professional real-time transcription assistant. Transcribe speech
+accurately. Pay special attention to the following technical terms and proper
+nouns — always spell and capitalise them exactly as listed:
+- Kubernetes
+- PostgreSQL
+- vMix
+```
+
+No term can alter the template or issue new instructions because:
+- The character allowlist excludes all prompt-injection characters.
+- The template structure is hardcoded; only list items are variable.
+
 ## Extending to multiple stages
 
 The architecture is stage-aware from day one:

@@ -17,22 +17,47 @@ logger = logging.getLogger(__name__)
 OnTextCallback = Callable[[str, bool], Coroutine[Any, Any, None]]
 
 
+def _build_system_instruction(terms: list[str]) -> types.Content:
+    """
+    Build a Gemini system instruction that lists glossary terms.
+
+    Security properties:
+    - The prompt template is fixed; terms only appear as bullet-list items.
+    - Terms have already been validated by Glossary to contain only safe
+      characters and no newlines, so they cannot escape their list context.
+    - No term is interpolated into a position where it could alter the
+      semantics of the instruction (e.g. as a command or a key/value pair).
+    """
+    term_list = "\n".join(f"- {t}" for t in terms)
+    prompt = (
+        "You are a professional real-time transcription assistant. "
+        "Transcribe speech accurately. "
+        "Pay special attention to the following technical terms and proper nouns — "
+        "always spell and capitalise them exactly as listed:\n"
+        f"{term_list}"
+    )
+    return types.Content(parts=[types.Part(text=prompt)])
+
+
 class GeminiTranscriber:
     """Opens a Gemini Live session and wires audio → text callbacks."""
 
-    def __init__(self, lang: str = "es") -> None:
+    def __init__(self, lang: str = "es", glossary: list[str] | None = None) -> None:
         self.lang = lang
+        self._glossary = glossary or []
         self._client = genai.Client(api_key=settings.gemini_api_key)
 
     def _config(self) -> types.LiveConnectConfig:
-        return types.LiveConnectConfig(
-            # Enable input audio transcription — returns results via
-            # server_content.input_transcription (final)
-            # and server_content.interim_input_transcription (partial)
-            input_audio_transcription=types.AudioTranscriptionConfig(),
-            # No TEXT modality needed for transcription-only mode
-            response_modalities=[],
-        )
+        kwargs: dict[str, Any] = {
+            "input_audio_transcription": types.AudioTranscriptionConfig(),
+            "response_modalities": [],
+        }
+        if self._glossary:
+            kwargs["system_instruction"] = _build_system_instruction(self._glossary)
+            logger.info(
+                "Gemini system instruction set with %d glossary term(s)", len(self._glossary)
+            )
+        return types.LiveConnectConfig(**kwargs)
 
     async def transcribe(
         self,
@@ -48,9 +73,10 @@ class GeminiTranscriber:
             config=self._config(),
         ) as session:
             logger.info(
-                "Gemini Live session open (model=%s, lang=%s)",
+                "Gemini Live session open (model=%s, lang=%s, glossary_terms=%d)",
                 settings.gemini_model,
                 self.lang,
+                len(self._glossary),
             )
 
             send_task = asyncio.create_task(

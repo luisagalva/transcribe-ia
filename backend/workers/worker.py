@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from typing import Optional
@@ -49,6 +50,10 @@ class StageWorker:
     @property
     def _history_key(self) -> str:
         return f"stage:{self.stage_id}:history"
+
+    @property
+    def _glossary_key(self) -> str:
+        return f"stage:{self.stage_id}:glossary"
 
     # ── Redis helpers ──────────────────────────────────────────────────────
 
@@ -110,8 +115,26 @@ class StageWorker:
             try:
                 await self._publish_status("active")
                 self._segment_start_ts = time.time()
+
+                # Reload glossary on every attempt so live updates take effect
+                # on reconnect without restarting the worker process.
+                glossary: list[str] = []
+                raw_glossary = await self._redis.get(self._glossary_key)  # type: ignore[union-attr]
+                if raw_glossary:
+                    try:
+                        glossary = json.loads(raw_glossary).get("terms", [])
+                    except (json.JSONDecodeError, AttributeError):
+                        logger.warning(
+                            "[stage %d] glossary parse error — starting without terms",
+                            self.stage_id,
+                        )
+                if glossary:
+                    logger.info(
+                        "[stage %d] loaded glossary: %d term(s)", self.stage_id, len(glossary)
+                    )
+
                 capture = FFmpegCapture(source=self.source, loop=self.loop_audio)
-                transcriber = GeminiTranscriber(lang=self.lang)
+                transcriber = GeminiTranscriber(lang=self.lang, glossary=glossary)
                 await transcriber.transcribe(
                     audio_stream=capture.stream(),
                     on_text=self._on_text,

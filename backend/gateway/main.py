@@ -11,6 +11,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.shared.config import settings
+from backend.shared.models import Glossary
 from backend.gateway.redis_sub import RedisSubscriber
 from backend.gateway.ws_manager import ConnectionManager
 
@@ -53,6 +54,44 @@ app.add_middleware(
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+# ── Glossary API ──────────────────────────────────────────────────────────────
+
+
+def _glossary_key(stage_id: int) -> str:
+    return f"stage:{stage_id}:glossary"
+
+
+@app.put("/stages/{stage_id}/glossary", status_code=200)
+async def put_glossary(stage_id: int, payload: Glossary) -> dict:
+    """Replace the glossary for a stage. Takes effect on the worker's next reconnect."""
+    if _redis is None:
+        return {"error": "Redis not available"}, 503  # type: ignore[return-value]
+    await _redis.set(_glossary_key(stage_id), payload.model_dump_json())
+    logger.info("Glossary updated for stage %d: %d term(s)", stage_id, len(payload.terms))
+    return {"stage_id": stage_id, "terms": payload.terms, "count": len(payload.terms)}
+
+
+@app.get("/stages/{stage_id}/glossary")
+async def get_glossary(stage_id: int) -> dict:
+    """Return the current glossary for a stage."""
+    if _redis is None:
+        return {"stage_id": stage_id, "terms": [], "count": 0}
+    raw = await _redis.get(_glossary_key(stage_id))
+    if not raw:
+        return {"stage_id": stage_id, "terms": [], "count": 0}
+    terms: list[str] = json.loads(raw).get("terms", [])
+    return {"stage_id": stage_id, "terms": terms, "count": len(terms)}
+
+
+@app.delete("/stages/{stage_id}/glossary", status_code=200)
+async def delete_glossary(stage_id: int) -> dict:
+    """Clear the glossary for a stage."""
+    if _redis is not None:
+        await _redis.delete(_glossary_key(stage_id))
+    logger.info("Glossary cleared for stage %d", stage_id)
+    return {"stage_id": stage_id, "terms": [], "count": 0}
 
 
 @app.websocket("/ws")
