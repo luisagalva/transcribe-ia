@@ -107,15 +107,125 @@ Para ajustar posición o tamaño desde el CSS personalizado de OBS:
 } /* texto más grande */
 ```
 
+---
+
+## Transmisión en vivo con OBS Studio
+
+Esta sección explica cómo usar **transcribe-ia** como overlay de subtítulos en tiempo real mientras transmites en vivo desde OBS Studio.
+
+### Requisitos previos
+
+#### Instalar FFmpeg (Windows)
+
+```bash
+winget install Gyan.FFmpeg
+```
+
+Verifica que quedó en el PATH:
+
+```bash
+ffmpeg -version
+```
+
+#### Encontrar el nombre exacto de tu micrófono
+
+```bash
+ffmpeg -list_devices true -f dshow -i dummy 2>&1
+```
+
+Busca la línea que dice `(audio)` y copia el nombre exacto, por ejemplo:
+
+```
+[dshow] "Micrófono (Logitech PRO X Wireless Gaming Headset)" (audio)
+```
+
+Ese nombre es el que usarás en el flag `--source` del worker.
+
+---
+
+### Paso a paso
+
+Abre **cuatro terminales** desde la raíz del proyecto.
+
+**Terminal 1 — Redis**
+
+```bash
+docker compose up -d
+```
+
+**Terminal 2 — Gateway**
+
+```bash
+python -m backend.run_gateway
+```
+
+**Terminal 3 — Frontend**
+
+```bash
+cd frontend
+npm run dev
+```
+
+**Terminal 4 — Worker (con tu micrófono)**
+
+Reemplaza el nombre del micrófono por el que obtuviste en el paso anterior:
+
+```bash
+python -m backend.run_worker \
+  --stage 1 \
+  --source "audio=Micrófono (Logitech PRO X Wireless Gaming Headset)" \
+  --lang es \
+  --target-langs en \
+  --no-loop
+```
+
+| Flag                | Descripción                                                               |
+| ------------------- | ------------------------------------------------------------------------- |
+| `--lang es`         | Idioma en el que hablas                                                   |
+| `--target-langs en` | Idioma al que traducir (puede ser `en`, `pt`, `zh` o combinados: `en,pt`) |
+| `--no-loop`         | Obligatorio para audio en vivo (no archivo)                               |
+
+---
+
+### Configurar OBS Studio
+
+#### 1. Agregar el overlay como Browser Source
+
+1. En OBS: **Fuentes → `+` → Navegador (Browser)**
+2. Configura los siguientes valores:
+
+| Campo                                     | Valor                                       |
+| ----------------------------------------- | ------------------------------------------- |
+| URL                                       | `http://localhost:5173/obs?stage=1&lang=en` |
+| Ancho                                     | `1920`                                      |
+| Alto                                      | `1080`                                      |
+| Shutdown source when not visible          | ✅ Activado                                 |
+| Refresh browser when scene becomes active | ✅ Activado                                 |
+
+El parámetro `lang=en` muestra los subtítulos en inglés. Cámbialo según el idioma de tu audiencia.
+
+#### 2. Posicionar la fuente correctamente
+
+> **Importante:** arrastra el Browser Source a la **primera posición** en la lista de fuentes (parte superior del panel). OBS renderiza las fuentes de abajo hacia arriba, por lo que ponerla al tope garantiza que los subtítulos se muestren sobre todo lo demás.
+
+#### 3. Transmitir a plataformas externas
+
+Configura tu destino de stream normalmente en **Ajustes → Emisión** (YouTube, Twitch, etc.). Los subtítulos del overlay se incluyen automáticamente en lo que OBS captura y transmite.
+
+---
+
+### Referencia rápida de URLs del overlay
+
+| URL                                         | Muestra                 |
+| ------------------------------------------- | ----------------------- |
+| `http://localhost:5173/obs?stage=1&lang=en` | Traducción al inglés    |
+| `http://localhost:5173/obs?stage=1&lang=es` | Español original        |
+| `http://localhost:5173/obs?stage=1&lang=pt` | Traducción al portugués |
+| `http://localhost:5173/obs?stage=1&lang=zh` | Traducción al chino     |
+
 ### Dashboard de producción
 
 Abre **http://localhost:5173/dashboard**.
-
-Requiere configurar `DASHBOARD_TOKEN` en el `.env` — es la contraseña de acceso al dashboard. Ejemplo:
-
-```
-DASHBOARD_TOKEN=mi-password-secreto
-```
 
 Desde el dashboard puedes ver el estado de todos los stages, silenciarlos y ver métricas de latencia en tiempo real.
 

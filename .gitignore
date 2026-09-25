@@ -99,14 +99,6 @@ Thumbs.db
 !.vscode/extensions.json
 !.vscode/settings.json
 
-
-# ==========================================
-# Fixtures / Audio / Video
-# ==========================================
-# Keep the directory but don't commit media files
-fixtures/*
-!fixtures/.gitkeep
-
 *.mp3
 *.mp4
 *.wav
