@@ -8,6 +8,7 @@ from typing import Optional
 import redis.asyncio as aioredis
 
 from backend.shared.config import settings
+from backend.gateway.stage_state import StageStateCache
 from backend.gateway.ws_manager import ConnectionManager
 
 logger = logging.getLogger(__name__)
@@ -16,8 +17,9 @@ _PATTERNS = ("stage:*:transcript", "stage:*:status")
 
 
 class RedisSubscriber:
-    def __init__(self, manager: ConnectionManager) -> None:
+    def __init__(self, manager: ConnectionManager, state_cache: StageStateCache) -> None:
         self._manager = manager
+        self._state_cache = state_cache
         self._redis: Optional[aioredis.Redis] = None  # type: ignore[type-arg]
         self._pubsub: Optional[aioredis.client.PubSub] = None
         self._task: Optional[asyncio.Task[None]] = None
@@ -38,13 +40,23 @@ class RedisSubscriber:
                 channel: str = message.get("channel", "")
                 data: str = message.get("data", "")
 
-                # Extract stage_id from "stage:{id}:transcript"
+                # channel format: "stage:{id}:transcript" or "stage:{id}:status"
                 parts = channel.split(":")
-                if len(parts) < 2:
+                if len(parts) < 3:
                     continue
                 try:
                     stage_id = int(parts[1])
                 except ValueError:
+                    continue
+
+                channel_suffix = parts[2]  # "transcript" or "status"
+
+                # Always update the dashboard state cache.
+                await self._state_cache.on_event(stage_id, data)
+
+                # Muted stages: suppress transcript delivery to stage viewers
+                # but let status events through so the worker status stays visible.
+                if channel_suffix == "transcript" and self._state_cache.is_muted(stage_id):
                     continue
 
                 await self._manager.broadcast(stage_id, data)

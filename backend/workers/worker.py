@@ -26,11 +26,13 @@ class StageWorker:
         source: str,
         lang: str = "es",
         loop_audio: bool = True,
+        output_lang: str | None = None,
     ) -> None:
         self.stage_id = stage_id
         self.source = source
         self.lang = lang
         self.loop_audio = loop_audio
+        self.output_lang = output_lang
 
         self._sequence = 0
         self._running = False
@@ -134,7 +136,11 @@ class StageWorker:
                     )
 
                 capture = FFmpegCapture(source=self.source, loop=self.loop_audio)
-                transcriber = GeminiTranscriber(lang=self.lang, glossary=glossary)
+                transcriber = GeminiTranscriber(
+                    lang=self.lang,
+                    glossary=glossary,
+                    output_lang=self.output_lang,
+                )
                 await transcriber.transcribe(
                     audio_stream=capture.stream(),
                     on_text=self._on_text,
