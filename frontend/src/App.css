@@ -182,14 +182,15 @@ body.obs-mode {
 }
 
 /*
- * Inner wrapper: column of lines aligned to the bottom so new lines
- * push older ones upward naturally.
+ * Inner wrapper: centered, max 70% width so long lines don't fill the screen.
  */
 .obs-subtitle {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
+  max-width: 70%;
+  margin: 0 auto;
 }
 
 /* Shared typography for every subtitle line */
