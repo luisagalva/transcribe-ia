@@ -5,3 +5,8 @@ redis>=5.2.0
 pydantic>=2.9.0
 pydantic-settings>=2.6.0
 python-dotenv>=1.0.0
+
+# testing
+pytest>=8.0.0
+pytest-asyncio>=0.24.0
+fakeredis>=2.26.0

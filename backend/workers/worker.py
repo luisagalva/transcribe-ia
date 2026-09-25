@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Optional
 
 import redis.asyncio as aioredis
@@ -33,6 +34,7 @@ class StageWorker:
         self._sequence = 0
         self._running = False
         self._redis: Optional[aioredis.Redis] = None  # type: ignore[type-arg]
+        self._segment_start_ts: float = 0.0
 
     # ── Channel helpers ────────────────────────────────────────────────────
 
@@ -57,12 +59,14 @@ class StageWorker:
 
     async def _on_text(self, text: str, is_final: bool) -> None:
         self._sequence += 1
+        latency_ms = int((time.time() - self._segment_start_ts) * 1000)
         event = TranscriptEvent(
             stage_id=self.stage_id,
-            lang=self.lang,
+            language=self.lang,
             text=text,
             is_final=is_final,
             sequence=self._sequence,
+            latency_ms=latency_ms,
         )
         payload = event.model_dump_json()
         await self._redis.publish(self._transcript_ch, payload)  # type: ignore[union-attr]
@@ -72,10 +76,18 @@ class StageWorker:
             pipe.lpush(self._history_key, payload)
             pipe.ltrim(self._history_key, 0, HISTORY_MAX - 1)
             await pipe.execute()
+            self._segment_start_ts = time.time()  # reset for next segment
 
         label = "[FINAL]" if is_final else "[part.]"
         preview = text[:70] + ("…" if len(text) > 70 else "")
-        logger.info("[stage %d] seq=%-4d %s %s", self.stage_id, self._sequence, label, preview)
+        logger.info(
+            "[stage %d] seq=%-4d %s latency=%dms %s",
+            self.stage_id,
+            self._sequence,
+            label,
+            latency_ms,
+            preview,
+        )
 
     # ── Main loop ──────────────────────────────────────────────────────────
 
@@ -97,6 +109,7 @@ class StageWorker:
         while self._running:
             try:
                 await self._publish_status("active")
+                self._segment_start_ts = time.time()
                 capture = FFmpegCapture(source=self.source, loop=self.loop_audio)
                 transcriber = GeminiTranscriber(lang=self.lang)
                 await transcriber.transcribe(

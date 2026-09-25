@@ -159,3 +159,8 @@ The architecture is stage-aware from day one:
 ## License
 
 Apache 2.0 — see [LICENSE](LICENSE).
+
+windows correr en local instalar
+
+winget install ffmpeg
+winget install Gyan.FFmpeg

@@ -33,7 +33,7 @@ export default function Viewer() {
         )}
 
         {lines.map((line) => (
-          <p key={`${line.sequence}-${line.ts}`} className="transcript-line final">
+          <p key={`${line.sequence}-${line.timestamp}`} className="transcript-line final">
             {line.text}
           </p>
         ))}

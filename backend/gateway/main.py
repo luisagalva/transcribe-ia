@@ -69,14 +69,14 @@ async def ws_endpoint(
         if raw_history:
             lines = [json.loads(h) for h in reversed(raw_history)]
             await ws.send_text(
-                json.dumps({"type": "history", "stage_id": stage, "lines": lines})
+                json.dumps({"event": "history", "stage_id": stage, "lines": lines})
             )
 
         # Send current stage status if available
         state = await _redis.hgetall(f"stage:{stage}:state")
         if state:
             await ws.send_text(
-                json.dumps({"type": "stage_status", "stage_id": stage, **state})
+                json.dumps({"event": "stage_status", "stage_id": stage, **state})
             )
 
     try:
@@ -84,7 +84,7 @@ async def ws_endpoint(
             text = await ws.receive_text()
             msg = json.loads(text)
             if msg.get("type") == "ping":
-                await ws.send_text(json.dumps({"type": "pong"}))
+                await ws.send_text(json.dumps({"event": "pong"}))
     except WebSocketDisconnect:
         pass
     except Exception as exc:
