@@ -18,6 +18,7 @@ from backend.workers.translator import GeminiTranslator, SUPPORTED_TARGET_LANGS
 logger = logging.getLogger(__name__)
 
 HISTORY_MAX = 500  # keep last N final lines in Redis list
+HEARTBEAT_INTERVAL = 30.0  # seconds; pub/sub keeps no history, so a restarted gateway relies on this
 
 
 class StageWorker:
@@ -41,6 +42,8 @@ class StageWorker:
 
         self._sequence = 0
         self._running = False
+        self._status = "idle"
+        self._status_lock = asyncio.Lock()
         self._redis: Optional[aioredis.Redis] = None  # type: ignore[type-arg]
         self._segment_start_ts: float = 0.0
         self._translator: Optional[GeminiTranslator] = (
@@ -74,9 +77,23 @@ class StageWorker:
     # ── Redis helpers ──────────────────────────────────────────────────────
 
     async def _publish_status(self, status: str) -> None:
-        event = StageStatusEvent(stage_id=self.stage_id, status=status)  # type: ignore[arg-type]
-        await self._redis.publish(self._status_ch, event.model_dump_json())  # type: ignore[union-attr]
+        self._status = status
+        await self._send_status()
         logger.info("[stage %d] status → %s", self.stage_id, status)
+
+    async def _send_status(self) -> None:
+        # Serialised so an in-flight heartbeat can't land after a newer transition.
+        async with self._status_lock:
+            event = StageStatusEvent(stage_id=self.stage_id, status=self._status)  # type: ignore[arg-type]
+            await self._redis.publish(self._status_ch, event.model_dump_json())  # type: ignore[union-attr]
+
+    async def _heartbeat(self) -> None:
+        while True:
+            await asyncio.sleep(HEARTBEAT_INTERVAL)
+            try:
+                await self._send_status()
+            except Exception as exc:
+                logger.warning("[stage %d] heartbeat failed: %s", self.stage_id, exc)
 
     async def _on_text(self, text: str, is_final: bool) -> None:
         self._sequence += 1
@@ -180,39 +197,44 @@ class StageWorker:
 
         backoff = 1.0
         max_backoff = 30.0
+        heartbeat = asyncio.create_task(self._heartbeat(), name=f"heartbeat-{self.stage_id}")
 
-        while self._running:
-            try:
-                await self._publish_status("active")
-                self._segment_start_ts = time.time()
+        try:
+            while self._running:
+                try:
+                    await self._publish_status("active")
+                    self._segment_start_ts = time.time()
 
-                glossary: list[str] = []
-                raw_glossary = await self._redis.get(self._glossary_key)  # type: ignore[union-attr]
-                if raw_glossary:
-                    try:
-                        glossary = json.loads(raw_glossary).get("terms", [])
-                    except (json.JSONDecodeError, AttributeError):
-                        logger.warning("[stage %d] glossary parse error", self.stage_id)
-                if glossary:
-                    logger.info("[stage %d] loaded glossary: %d term(s)", self.stage_id, len(glossary))
+                    glossary: list[str] = []
+                    raw_glossary = await self._redis.get(self._glossary_key)  # type: ignore[union-attr]
+                    if raw_glossary:
+                        try:
+                            glossary = json.loads(raw_glossary).get("terms", [])
+                        except (json.JSONDecodeError, AttributeError):
+                            logger.warning("[stage %d] glossary parse error", self.stage_id)
+                    if glossary:
+                        logger.info("[stage %d] loaded glossary: %d term(s)", self.stage_id, len(glossary))
 
-                capture = FFmpegCapture(source=self.source, loop=self.loop_audio)
-                transcriber = GeminiTranscriber(lang=self.lang, glossary=glossary)
-                await transcriber.transcribe(
-                    audio_stream=capture.stream(),
-                    on_text=self._on_text,
-                )
-                backoff = 1.0
+                    capture = FFmpegCapture(source=self.source, loop=self.loop_audio)
+                    transcriber = GeminiTranscriber(lang=self.lang, glossary=glossary)
+                    await transcriber.transcribe(
+                        audio_stream=capture.stream(),
+                        on_text=self._on_text,
+                    )
+                    backoff = 1.0
 
-            except asyncio.CancelledError:
-                break
-            except Exception as exc:
-                logger.error(
-                    "[stage %d] error: %s — retrying in %.0fs", self.stage_id, exc, backoff
-                )
-                await self._publish_status("reconnecting")
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, max_backoff)
+                except asyncio.CancelledError:
+                    break
+                except Exception as exc:
+                    logger.error(
+                        "[stage %d] error: %s — retrying in %.0fs", self.stage_id, exc, backoff
+                    )
+                    await self._publish_status("reconnecting")
+                    await asyncio.sleep(backoff)
+                    backoff = min(backoff * 2, max_backoff)
+        finally:
+            heartbeat.cancel()
+            await asyncio.gather(heartbeat, return_exceptions=True)
 
         await self._publish_status("idle")
         await self._redis.aclose()

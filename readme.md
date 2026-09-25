@@ -290,6 +290,14 @@ transcribe-ia/
 └── .env.example
 ```
 
+Probar de manera local los audios de los fixtures
+
+```
+python -m backend.run_worker --source fixtures/test_es.mp3 --lang es
+python -m backend.run_worker --source fixtures/test_ch.mp3 --lang es
+python -m backend.run_worker --source fixtures/test_en.mp3 --lang es
+```
+
 ## Licencia
 
 Apache 2.0
