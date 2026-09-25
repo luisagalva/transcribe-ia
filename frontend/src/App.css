@@ -1,0 +1,194 @@
+/* ── Reset ───────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+:root {
+  --bg:          #0D1117;
+  --surface:     #161B22;
+  --border:      #30363D;
+  --text:        #E6EDF3;
+  --text-muted:  #7D8590;
+  --accent:      #58A6FF;
+  --green:       #3FB950;
+  --red:         #F85149;
+  --font-mono:   'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+/* OBS mode — transparent background for Browser Source */
+html.obs-mode,
+body.obs-mode {
+  background: transparent !important;
+}
+
+/* ── Viewer ──────────────────────────────────────────── */
+.viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+.viewer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.viewer-logo {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -.02em;
+  color: var(--text);
+}
+
+.viewer-logo .accent { color: var(--accent); }
+
+/* Status badge */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  background: var(--surface);
+}
+
+.status-live {
+  border-color: rgba(63, 185, 80, .4);
+  color: var(--green);
+  background: rgba(63, 185, 80, .08);
+}
+
+.status-off {
+  border-color: rgba(248, 81, 73, .3);
+  color: var(--red);
+  background: rgba(248, 81, 73, .07);
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.status-live .status-dot {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: .4; }
+}
+
+/* Transcript area */
+.transcript-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 0 48px;
+  scroll-behavior: smooth;
+}
+
+.empty-hint {
+  color: var(--text-muted);
+  font-size: 14px;
+  text-align: center;
+  padding-top: 60px;
+}
+
+.transcript-line {
+  margin: 0 0 6px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 17px;
+  line-height: 1.65;
+}
+
+.transcript-line.final {
+  color: var(--text);
+  background: transparent;
+}
+
+.transcript-line.partial {
+  color: var(--accent);
+  background: rgba(88, 166, 255, .06);
+  border: 1px solid rgba(88, 166, 255, .15);
+}
+
+/* Blinking cursor on partial line */
+.cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  background: var(--accent);
+  margin-left: 3px;
+  vertical-align: text-bottom;
+  animation: blink .9s step-end infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+/* Scrollbar */
+.transcript-area::-webkit-scrollbar        { width: 5px; }
+.transcript-area::-webkit-scrollbar-track  { background: transparent; }
+.transcript-area::-webkit-scrollbar-thumb  { background: var(--border); border-radius: 3px; }
+
+/* ── OBS Overlay ─────────────────────────────────────── */
+.obs-overlay {
+  position: fixed;
+  bottom: 40px;
+  left: 0;
+  right: 0;
+  padding: 0 48px;
+  pointer-events: none;
+}
+
+.obs-text {
+  margin: 0;
+  color: #ffffff;
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
+  word-break: break-word;
+
+  /* Black outline via multiple text-shadows */
+  text-shadow:
+    -2px -2px 0 #000,
+     2px -2px 0 #000,
+    -2px  2px 0 #000,
+     2px  2px 0 #000,
+    -3px  0   0 #000,
+     3px  0   0 #000,
+     0   -3px 0 #000,
+     0    3px 0 #000,
+     0    4px 8px rgba(0, 0, 0, .7);
+}

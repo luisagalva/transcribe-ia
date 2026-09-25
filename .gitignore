@@ -1,0 +1,136 @@
+# ==========================================
+# Environment / Secrets
+# ==========================================
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# API keys / credentials
+*.pem
+*.key
+credentials.json
+service-account*.json
+
+
+# ==========================================
+# Python
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# Type checking / linting
+.mypy_cache/
+.pyre/
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+
+# ==========================================
+# FastAPI / local runtime
+# ==========================================
+*.log
+logs/
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+
+# ==========================================
+# Node / React / Vite
+# ==========================================
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+
+# Vite
+frontend/.vite/
+
+# TypeScript
+*.tsbuildinfo
+
+# npm
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+
+# ==========================================
+# OS / IDE
+# ==========================================
+.DS_Store
+Thumbs.db
+
+.vscode/
+.idea/
+
+*.swp
+*.swo
+
+# VS Code local settings
+!.vscode/extensions.json
+!.vscode/settings.json
+
+
+# ==========================================
+# Fixtures / Audio / Video
+# ==========================================
+# Keep the directory but don't commit media files
+fixtures/*
+!fixtures/.gitkeep
+
+*.mp3
+*.mp4
+*.wav
+*.m4a
+*.aac
+*.ogg
+*.flac
+*.webm
+*.mov
+*.avi
+*.mkv
+*.ts
+
+
+# ==========================================
+# Docker
+# ==========================================
+docker-compose.override.yml
+
+
+# ==========================================
+# Temporary files
+# ==========================================
+tmp/
+temp/
+*.tmp
+*.temp
