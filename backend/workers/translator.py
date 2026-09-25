@@ -42,6 +42,7 @@ class GeminiTranslator:
         response = await self._client.aio.models.generate_content(
             model=settings.gemini_translation_model,
             contents=prompt,
+            config={"automatic_function_calling": {"disable": True}},
         )
         result = (response.text or "").strip()
         logger.debug("Translated [%s] %r → %r", target_lang, text[:60], result[:60])

@@ -21,11 +21,19 @@ class FFmpegCapture:
         self._process: Optional[asyncio.subprocess.Process] = None
 
     def _build_cmd(self) -> list[str]:
+        is_device = self.source.startswith("audio=") or self.source.startswith("video=")
+
         cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error"]
-        if self.loop:
+
+        if is_device:
+            cmd += ["-f", "dshow"]
+        elif self.loop:
             cmd += ["-stream_loop", "-1"]
+
+        if not is_device:
+            cmd += ["-re"]  # simulate real-time playback for files
+
         cmd += [
-            "-re",        # simulate real-time playback
             "-i", self.source,
             "-vn",        # drop video
             "-ar", "16000",

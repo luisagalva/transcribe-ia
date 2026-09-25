@@ -33,10 +33,11 @@ class StageWorker:
         self.source = source
         self.lang = lang
         self.loop_audio = loop_audio
-        # Validate and filter target langs against the supported set.
-        self.target_langs: list[str] = [
-            l for l in (target_langs or []) if l in SUPPORTED_TARGET_LANGS
+        # Fall back to DEFAULT_TARGET_LANGS from config when none are passed.
+        raw = target_langs if target_langs is not None else [
+            l.strip() for l in settings.default_target_langs.split(",") if l.strip()
         ]
+        self.target_langs: list[str] = [l for l in raw if l in SUPPORTED_TARGET_LANGS]
 
         self._sequence = 0
         self._running = False
