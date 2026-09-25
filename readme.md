@@ -169,7 +169,3 @@ backend/
 frontend/    React + Vite (Monitor y overlay de OBS)
 fixtures/    audios que usan los workers
 ```
-
-## Licencia
-
-Este proyecto se distribuye bajo la licencia [Apache 2.0](LICENSE).
