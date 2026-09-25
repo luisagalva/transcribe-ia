@@ -16,18 +16,6 @@ logger = logging.getLogger(__name__)
 # Coroutine type for the on_text callback: (text, is_final) -> None
 OnTextCallback = Callable[[str, bool], Coroutine[Any, Any, None]]
 
-SYSTEM_PROMPT = """\
-You are a real-time speech transcription system for live technology conferences.
-
-Your ONLY task: transcribe the audio you hear into text.
-
-Rules:
-- Output ONLY the spoken words. No commentary, no greetings, no explanations.
-- If you hear silence or noise, output nothing.
-- Preserve technical terms, product names, and proper nouns accurately.
-- Transcribe continuously without summarizing.
-"""
-
 
 class GeminiTranscriber:
     """Opens a Gemini Live session and wires audio → text callbacks."""
@@ -37,14 +25,13 @@ class GeminiTranscriber:
         self._client = genai.Client(api_key=settings.gemini_api_key)
 
     def _config(self) -> types.LiveConnectConfig:
-        lang_hint = (
-            f"\nThe speaker is speaking in language code '{self.lang}'."
-            if self.lang != "auto"
-            else ""
-        )
         return types.LiveConnectConfig(
-            response_modalities=["TEXT"],
-            system_instruction=SYSTEM_PROMPT + lang_hint,
+            # Enable input audio transcription — returns results via
+            # server_content.input_transcription (final)
+            # and server_content.interim_input_transcription (partial)
+            input_audio_transcription=types.AudioTranscriptionConfig(),
+            # No TEXT modality needed for transcription-only mode
+            response_modalities=[],
         )
 
     async def transcribe(
@@ -60,7 +47,11 @@ class GeminiTranscriber:
             model=settings.gemini_model,
             config=self._config(),
         ) as session:
-            logger.info("Gemini Live session open (model=%s, lang=%s)", settings.gemini_model, self.lang)
+            logger.info(
+                "Gemini Live session open (model=%s, lang=%s)",
+                settings.gemini_model,
+                self.lang,
+            )
 
             send_task = asyncio.create_task(
                 self._send(session, audio_stream), name="gemini-send"
@@ -70,7 +61,6 @@ class GeminiTranscriber:
             )
 
             try:
-                # Run until the first task finishes (send ends → stream EOF)
                 done, pending = await asyncio.wait(
                     [send_task, recv_task],
                     return_when=asyncio.FIRST_COMPLETED,
@@ -79,7 +69,6 @@ class GeminiTranscriber:
                     task.cancel()
                 await asyncio.gather(*pending, return_exceptions=True)
 
-                # Re-raise any exception from completed tasks
                 for task in done:
                     if not task.cancelled():
                         exc = task.exception()
@@ -109,30 +98,33 @@ class GeminiTranscriber:
         on_text: OnTextCallback,
     ) -> None:
         async for response in session.receive():
-            text: str | None = None
+            sc = response.server_content
+            if sc is None:
+                continue
 
-            # Convenience accessor available on recent SDK versions
-            if hasattr(response, "text") and response.text:
-                text = response.text
-            elif (
-                response.server_content
-                and response.server_content.model_turn
-            ):
-                parts = []
-                for part in response.server_content.model_turn.parts:
-                    if hasattr(part, "text") and part.text:
-                        parts.append(part.text)
+            # ── Partial transcription ─────────────────────────────────────
+            if sc.interim_input_transcription and sc.interim_input_transcription.text:
+                await on_text(sc.interim_input_transcription.text, False)
+                logger.debug("Transcript [part.]: %s", sc.interim_input_transcription.text[:80])
+
+            # ── Final transcription ───────────────────────────────────────
+            elif sc.input_transcription and sc.input_transcription.text:
+                await on_text(sc.input_transcription.text, True)
+                logger.debug("Transcript [FINAL]: %s", sc.input_transcription.text[:80])
+
+            # ── Fallback: text generation mode (for non-transcribe models) ─
+            elif sc.model_turn:
+                parts = [
+                    p.text
+                    for p in sc.model_turn.parts
+                    if hasattr(p, "text") and p.text
+                ]
                 if parts:
                     text = "".join(parts)
-
-            if text:
-                is_final = bool(
-                    response.server_content
-                    and response.server_content.turn_complete
-                )
-                await on_text(text, is_final)
-                logger.debug(
-                    "Transcript [%s] %s",
-                    "FINAL" if is_final else "part.",
-                    text[:80],
-                )
+                    is_final = bool(sc.turn_complete)
+                    await on_text(text, is_final)
+                    logger.debug(
+                        "Transcript [%s] (gen): %s",
+                        "FINAL" if is_final else "part.",
+                        text[:80],
+                    )
