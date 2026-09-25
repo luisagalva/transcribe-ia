@@ -1,6 +1,7 @@
 """GeminiTranslator: translates transcript segments using the standard Gemini API."""
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from google import genai
@@ -29,7 +30,7 @@ class GeminiTranslator:
     def __init__(self) -> None:
         self._client = genai.Client(api_key=settings.gemini_api_key)
 
-    async def translate(self, text: str, target_lang: str) -> str:
+    async def translate(self, text: str, target_lang: str, retries: int = 3) -> str:
         lang_name = LANG_NAMES.get(target_lang, target_lang)
         prompt = (
             f"You are a professional subtitle translator. "
@@ -39,11 +40,25 @@ class GeminiTranslator:
             f"Match the length and register of the original.\n\n"
             f"{text}"
         )
-        response = await self._client.aio.models.generate_content(
-            model=settings.gemini_translation_model,
-            contents=prompt,
-            config={"automatic_function_calling": {"disable": True}},
-        )
-        result = (response.text or "").strip()
-        logger.debug("Translated [%s] %r → %r", target_lang, text[:60], result[:60])
-        return result
+        delay = 1.0
+        for attempt in range(retries):
+            try:
+                response = await self._client.aio.models.generate_content(
+                    model=settings.gemini_translation_model,
+                    contents=prompt,
+                )
+                result = (response.text or "").strip()
+                logger.debug("Translated [%s] %r → %r", target_lang, text[:60], result[:60])
+                return result
+            except Exception as exc:
+                is_last = attempt == retries - 1
+                if is_last:
+                    raise
+                # Retry on 503 / transient errors
+                logger.warning(
+                    "Translation to %s failed (attempt %d/%d): %s — retrying in %.0fs",
+                    target_lang, attempt + 1, retries, exc, delay,
+                )
+                await asyncio.sleep(delay)
+                delay *= 2
+        return text  # unreachable but satisfies type checker
