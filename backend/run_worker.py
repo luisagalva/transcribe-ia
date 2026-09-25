@@ -21,11 +21,6 @@ def main() -> None:
     parser.add_argument("--source", required=True, help="Audio/video file or stream URL")
     parser.add_argument("--lang", default="es", help="Language code, e.g. es, en (default: es)")
     parser.add_argument("--no-loop", action="store_true", help="Play source once (don't loop)")
-    parser.add_argument(
-        "--output-lang",
-        default=None,
-        help="Translate output to this language (es/en/zh). Default: transcribe as-is.",
-    )
     args = parser.parse_args()
 
     worker = StageWorker(
@@ -33,7 +28,6 @@ def main() -> None:
         source=args.source,
         lang=args.lang,
         loop_audio=not args.no_loop,
-        output_lang=args.output_lang,
     )
 
     try:

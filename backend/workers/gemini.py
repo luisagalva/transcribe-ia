@@ -17,64 +17,34 @@ logger = logging.getLogger(__name__)
 OnTextCallback = Callable[[str, bool], Coroutine[Any, Any, None]]
 
 
-_LANG_NAMES: dict[str, str] = {
-    "es": "Spanish",
-    "en": "English",
-    "zh": "Chinese (Simplified)",
-}
-
-
-def _build_system_instruction(
-    terms: list[str],
-    output_lang: str | None = None,
-) -> types.Content:
+def _build_system_instruction(terms: list[str]) -> types.Content:
     """
-    Build a Gemini system instruction for transcription or translation.
+    Build a Gemini system instruction that lists glossary terms.
 
     Security properties:
     - The prompt template is fixed; terms only appear as bullet-list items.
     - Terms have already been validated by Glossary to contain only safe
       characters and no newlines, so they cannot escape their list context.
-    - output_lang is restricted to a known allowlist before being interpolated.
+    - No term is interpolated into a position where it could alter the
+      semantics of the instruction (e.g. as a command or a key/value pair).
     """
-    if output_lang:
-        lang_name = _LANG_NAMES.get(output_lang, output_lang)
-        base = (
-            f"You are a professional real-time transcription and translation assistant. "
-            f"Listen to the audio and output ONLY the {lang_name} translation. "
-            f"Do not include the original language text. "
-            f"Keep proper nouns, technical terms, and brand names intact. "
-        )
-    else:
-        base = (
-            "You are a professional real-time transcription assistant. "
-            "Transcribe speech accurately. "
-        )
-
-    if terms:
-        term_list = "\n".join(f"- {t}" for t in terms)
-        base += (
-            "Pay special attention to the following technical terms and proper nouns — "
-            "always spell and capitalise them exactly as listed:\n"
-            f"{term_list}"
-        )
-
-    return types.Content(parts=[types.Part(text=base)])
+    term_list = "\n".join(f"- {t}" for t in terms)
+    prompt = (
+        "You are a professional real-time transcription assistant. "
+        "Transcribe speech accurately. "
+        "Pay special attention to the following technical terms and proper nouns — "
+        "always spell and capitalise them exactly as listed:\n"
+        f"{term_list}"
+    )
+    return types.Content(parts=[types.Part(text=prompt)])
 
 
 class GeminiTranscriber:
     """Opens a Gemini Live session and wires audio → text callbacks."""
 
-    def __init__(
-        self,
-        lang: str = "es",
-        glossary: list[str] | None = None,
-        output_lang: str | None = None,
-    ) -> None:
+    def __init__(self, lang: str = "es", glossary: list[str] | None = None) -> None:
         self.lang = lang
         self._glossary = glossary or []
-        # Restrict output_lang to known codes to prevent injection via the allowlist.
-        self._output_lang = output_lang if output_lang in _LANG_NAMES else None
         self._client = genai.Client(api_key=settings.gemini_api_key)
 
     def _config(self) -> types.LiveConnectConfig:
@@ -82,13 +52,10 @@ class GeminiTranscriber:
             "input_audio_transcription": types.AudioTranscriptionConfig(),
             "response_modalities": [],
         }
-        if self._glossary or self._output_lang:
-            kwargs["system_instruction"] = _build_system_instruction(
-                self._glossary, self._output_lang
-            )
+        if self._glossary:
+            kwargs["system_instruction"] = _build_system_instruction(self._glossary)
             logger.info(
-                "Gemini system instruction: output_lang=%s glossary_terms=%d",
-                self._output_lang, len(self._glossary),
+                "Gemini system instruction set with %d glossary term(s)", len(self._glossary)
             )
         return types.LiveConnectConfig(**kwargs)
 
